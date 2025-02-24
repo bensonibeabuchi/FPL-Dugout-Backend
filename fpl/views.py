@@ -4,6 +4,8 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from django.http import HttpResponse
+from django.http import JsonResponse
+
 
 
 BASE_URL = "https://fantasy.premierleague.com/api"
@@ -23,8 +25,8 @@ class FetchFPLGeneralInfoView(APIView):
 class FetchFPLTeamView(APIView):
     """Fetch an FPL manager's details using their team ID."""
     permission_classes = ''
-    def get(self, request, team_id):
-        url = f"{BASE_URL}/entry/{team_id}/"
+    def get(self, request, teamId):
+        url = f"{BASE_URL}/entry/{teamId}/"
         try:
             response = requests.get(url)
             response.raise_for_status()
@@ -91,8 +93,8 @@ class LiveGameweekDataView(APIView):
 
 class FetchFPLTeamHistoryView(APIView):
     """Fetch an FPL manager's history, including past seasons and gameweek data."""
-    def get(self, request, team_id):
-        url = f"{BASE_URL}/entry/{team_id}/history/"
+    def get(self, request, teamId):
+        url = f"{BASE_URL}/entry/{teamId}/history/"
         try:
             response = requests.get(url)
             response.raise_for_status()
@@ -102,8 +104,8 @@ class FetchFPLTeamHistoryView(APIView):
 
 class FetchFPLTransfersView(APIView):
     """Fetch an FPL manager's transfer history."""
-    def get(self, request, team_id):
-        url = f"{BASE_URL}/entry/{team_id}/transfers/"
+    def get(self, request, teamId):
+        url = f"{BASE_URL}/entry/{teamId}/transfers/"
         try:
             response = requests.get(url)
             response.raise_for_status()
@@ -135,8 +137,8 @@ class FetchFPLH2HLeagueView(APIView):
 
 class FetchFullTeamDetailsView(APIView):
     """Fetch an FPL manager's team for a specific gameweek."""
-    def get(self, request, team_id, gw):
-        url = f"{BASE_URL}/entry/{team_id}/event/{gw}/picks/"
+    def get(self, request, teamId, gw):
+        url = f"{BASE_URL}/entry/{teamId}/event/{gw}/picks/"
         try:
             response = requests.get(url)
             response.raise_for_status()
@@ -171,3 +173,39 @@ class EventStatusView(APIView):
 
 #         except requests.exceptions.RequestException as e:
 #             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+def get_league_players_and_teams(league_id, gameweek):
+    """Fetch all players in a league and list managers who own each player."""
+    
+    # Get league standings
+    league_url = f"{BASE_URL}/leagues-classic/{league_id}/standings/"
+    league_data = requests.get(league_url).json()
+    
+    # Get FPL player database
+    players_url = f"{BASE_URL}/bootstrap-static/"
+    players_data = requests.get(players_url).json()
+    player_dict = {p["id"]: p["web_name"] for p in players_data["elements"]}
+
+    player_ownership = {}  # {player_name: [manager1, manager2, ...]}
+
+    for manager in league_data['standings']['results']:
+        team_id = manager['entry']
+        team_url = f"{BASE_URL}/entry/{team_id}/event/{gameweek}/picks/"
+        team_data = requests.get(team_url).json()
+
+        for player in team_data["picks"]:
+            player_id = player["element"]
+            player_name = player_dict.get(player_id, "Unknown Player")
+
+            if player_name not in player_ownership:
+                player_ownership[player_name] = []
+
+            player_ownership[player_name].append(manager["player_name"])
+
+    return {"players": list(player_ownership.keys()), "ownership": player_ownership}
+
+def get_players(request, league_id, gameweek):
+    """API endpoint to return all players in the league and their owners."""
+    data = get_league_players_and_teams(league_id, gameweek)
+    return JsonResponse(data)
