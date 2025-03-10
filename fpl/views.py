@@ -519,4 +519,10 @@ class FetchLeagueLiveTotalPointsView(APIView):
             tasks = [self.fetch_team_live_points(client, team.get("entry"), gw) for team in teams if team.get("entry")]
             live_points_list = await asyncio.gather(*tasks)
 
-        return Response(live_points_list, status=status.HTTP_200_OK)
+        # Calculate the highest live total points in the league
+        highest_live_points = max((team["live_total_points"] for team in live_points_list), default=0)
+
+        return Response({
+            "highest_live_points": highest_live_points,
+            "teams_live_points": live_points_list
+        }, status=status.HTTP_200_OK)
